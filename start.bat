@@ -5,8 +5,8 @@ setlocal enabledelayedexpansion
 
 set "NGINX_DIR=%~dp0"
 set "NGINX_CONF=%NGINX_DIR%conf\nginx.conf"
+set "TEMP_CONF=%NGINX_DIR%conf\nginx_temp.conf"
 
-REM 查找 CatWrt 目录或以 CatWrt- 开头的目录
 set "WEB_DIR="
 for /d %%d in ("%NGINX_DIR%CatWrt*") do (
     if exist "%%d" (
@@ -14,11 +14,27 @@ for /d %%d in ("%NGINX_DIR%CatWrt*") do (
     )
 )
 
-REM 如果找到 CatWrt 目录，修改 Nginx 配置文件
 if defined WEB_DIR (
     echo 使用目录 %WEB_DIR% 作为网页根目录
     set "WEB_DIR=%WEB_DIR:\=/%"
-    powershell -Command "(Get-Content -Raw %NGINX_CONF%) -replace 'root\s+\S+;', 'root !WEB_DIR!;' | Set-Content %NGINX_CONF%"
+
+    if exist "%NGINX_CONF%" (
+        > "%TEMP_CONF%" (
+            for /f "usebackq tokens=*" %%l in ("%NGINX_CONF%") do (
+                set "line=%%l"
+                if "%%l"=="root " (
+                    echo root !WEB_DIR!;
+                ) else (
+                    echo %%l
+                )
+            )
+        )
+        move /Y "%TEMP_CONF%" "%NGINX_CONF%"
+    ) else (
+        echo 错误：找不到配置文件 %NGINX_CONF%
+        pause
+        exit /b 1
+    )
 ) else (
     echo 错误：未找到 CatWrt 目录
     pause
@@ -28,9 +44,20 @@ if defined WEB_DIR (
 cd /d "%NGINX_DIR%"
 start nginx
 
-REM 获取本机 IP 地址并显示
-for /f "tokens=14" %%i in ('ipconfig ^| findstr /i "IPv4"') do set IP_ADDR=%%i
-echo Nginx 已启动，你可以通过此地址使 CatWrt 获取到本地副本软件源 http://%IP_ADDR%
+set "IP_ADDR="
+for /f "tokens=1,2 delims=:" %%a in ('ipconfig ^| findstr /i "Ethernet adapter Wireless LAN adapter"') do (
+    for /f "tokens=14" %%i in ('ipconfig ^| findstr /i "IPv4 Address\|IPv4 地址"') do (
+        if not defined IP_ADDR (
+            set "IP_ADDR=%%i"
+        )
+    )
+)
+
+if defined IP_ADDR (
+    echo Nginx 已启动，你可以通过此地址使 CatWrt 获取到本地副本软件源 http://%IP_ADDR%
+) else (
+    echo 错误：未找到有效的 IPv4 地址
+)
 
 pause
 
